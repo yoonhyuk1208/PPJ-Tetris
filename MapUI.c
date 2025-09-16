@@ -1,6 +1,6 @@
 // Map.h
 //========================
-// ╕╩└╟ UI╕ж ▒╕╝║╟╧┤┬ ║╬║╨
+// ыз╡ьЭШ UIые╝ ъ╡мьД▒эХШыКФ ы╢Аы╢Д
 //========================
 #define _CRT_SECURE_NO_WARNINGS
 #include "MapUI.h"
@@ -8,29 +8,29 @@
 #include <stdio.h>
 #include "BlockData.h"
 
-// └№├╝ ╞▓
+// ьаДь▓┤ эЛА
 void Map(void) {
-	ScreenPrint(0, 0, "бсбсбсбсбсбсбсбсбсбсбсбс");
+	ScreenPrint(0, 0, "тЦатЦатЦатЦатЦатЦатЦатЦатЦатЦатЦатЦа");
 	for (int i = 1; i < 18; i++) {
-		ScreenPrint(0, i, "бс");
-		ScreenPrint(22, i, "бс");
+		ScreenPrint(0, i, "тЦа");
+		ScreenPrint(22, i, "тЦа");
 	}
-	ScreenPrint(0, 18, "бсбсбсбсбсбсбсбсбсбсбсбс");
+	ScreenPrint(0, 18, "тЦатЦатЦатЦатЦатЦатЦатЦатЦатЦатЦатЦа");
 }
 
-// ┴б╝Ў ╞▓
+// ьаРьИШ эЛА
 void MapScore(int* nScore) {
 	char chScore[15];
-	sprintf(chScore, "Score : %d", (*nScore)*500);
+	sprintf(chScore, "Score : %d", (*nScore));
 	ScreenPrint(25, 10, chScore);
 }
 
 void MapNext(int* nBlockType) {
-	ScreenPrint(25, 0, "брбрбрбрбрбрбрбр");
-	ScreenPrint(25, 6, "брбрбрбрбрбрбрбр");
+	ScreenPrint(25, 0, "тЦбтЦбтЦбтЦбтЦбтЦбтЦбтЦб");
+	ScreenPrint(25, 6, "тЦбтЦбтЦбтЦбтЦбтЦбтЦбтЦб");
 	for (int i = 0; i < 6; i++) {
-		ScreenPrint(25, i+1, "бр");
-		ScreenPrint(39, i +1, "бр");
+		ScreenPrint(25, i+1, "тЦб");
+		ScreenPrint(39, i +1, "тЦб");
 	}
 
 	switch (*nBlockType) {
@@ -38,7 +38,7 @@ void MapNext(int* nBlockType) {
 		for (int i = 0; i < 4; i++) {
 			for (int j = 0; j < 4; j++) {
 				if (Block0[0][i][j] == 1) {
-					ScreenPrint( j*2+29, i+1,"бс");
+					ScreenPrint( j*2+29, i+1,"тЦа");
 				}
 			}
 		}
@@ -47,7 +47,7 @@ void MapNext(int* nBlockType) {
 		for (int i = 0; i < 4; i++) {
 			for (int j = 0; j < 4; j++) {
 				if (Block1[0][i][j] == 1) {
-					ScreenPrint(j * 2 + 29, i + 1, "бс");
+					ScreenPrint(j * 2 + 29, i + 1, "тЦа");
 				}
 			}
 		}
@@ -56,7 +56,7 @@ void MapNext(int* nBlockType) {
 		for (int i = 0; i < 4; i++) {
 			for (int j = 0; j < 4; j++) {
 				if (Block2[0][i][j] == 1) {
-					ScreenPrint(j * 2 + 29, i + 1, "бс");
+					ScreenPrint(j * 2 + 29, i + 1, "тЦа");
 				}
 			}
 		}
@@ -65,7 +65,7 @@ void MapNext(int* nBlockType) {
 		for (int i = 0; i < 4; i++) {
 			for (int j = 0; j < 4; j++) {
 				if (Block3[0][i][j] == 1) {
-					ScreenPrint(j * 2 + 29, i + 1, "бс");
+					ScreenPrint(j * 2 + 29, i + 1, "тЦа");
 				}
 			}
 		}
@@ -74,7 +74,7 @@ void MapNext(int* nBlockType) {
 		for (int i = 0; i < 4; i++) {
 			for (int j = 0; j < 4; j++) {
 				if (Block4[0][i][j] == 1) {
-					ScreenPrint(j * 2 + 29, i + 1, "бс");
+					ScreenPrint(j * 2 + 29, i + 1, "тЦа");
 				}
 			}
 		}
@@ -83,7 +83,7 @@ void MapNext(int* nBlockType) {
 		for (int i = 0; i < 4; i++) {
 			for (int j = 0; j < 4; j++) {
 				if (Block5[0][i][j] == 1) {
-					ScreenPrint(j * 2 + 29, i + 1, "бс");
+					ScreenPrint(j * 2 + 29, i + 1, "тЦа");
 				}
 			}
 		}
@@ -92,7 +92,7 @@ void MapNext(int* nBlockType) {
 		for (int i = 0; i < 4; i++) {
 			for (int j = 0; j < 4; j++) {
 				if (Block6[0][i][j] == 1) {
-					ScreenPrint(j * 2 + 29, i + 1, "бс");
+					ScreenPrint(j * 2 + 29, i + 1, "тЦа");
 				}
 			}
 		}
@@ -104,28 +104,30 @@ void MapNext(int* nBlockType) {
 }
 
 
-// ┴╪║ё╕╩
+// ьдАы╣Дыз╡
 void MapReady1(void) {
 	ScreenPrint(6, 2, "T E T R I S");
-	ScreenPrint(4, 7, "Left   : бч");
-	ScreenPrint(4, 8, "Right  : бц");
-	ScreenPrint(4, 9, "Rotate : бш");
-	ScreenPrint(4, 10, "Down   : бщ");
+	ScreenPrint(4, 7, "Left   : тЖР");
+	ScreenPrint(4, 8, "Right  : тЖТ");
+	ScreenPrint(4, 9, "Rotate : тЖС");
+	ScreenPrint(4, 10, "Down   : тЖУ");
 }
 
-// ┴╪║ё╕╩
+// ьдАы╣Дыз╡
 void MapReady2(void) {
 
 	ScreenPrint(4, 14, "Press Enter" );
 	ScreenPrint(12, 15, "to Start");
 }
 
-//░с░·╕╩
-void MapResult(int* nScore) {
-
-	ScreenPrint(5, 5, "Game Over~");
+//ъ▓░ъ│╝ыз╡
+void MapResult(int* nScore, int* check_clear) {
+	if(*check_clear==1)
+		ScreenPrint(5, 5, "Congratulations!");
+	else
+		ScreenPrint(5, 5, "Game Over~");
 	char chScore[15];
-	sprintf(chScore, "Score : %d", (*nScore) * 500);
+	sprintf(chScore, "Score : %d", (*nScore));
 	ScreenPrint(5, 10, chScore);
 	for (int i = 1; i < 11; i++) {
 		ScreenPrint(i*2, 17, "  ");

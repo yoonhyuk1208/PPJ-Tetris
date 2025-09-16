@@ -1,19 +1,20 @@
 #include<time.h>
 #include<stdlib.h>
 #include"BlockData.h"
+#include"Screen.h"
 
-// ºí·Ï ¸ð¾ç °áÁ¤
-int BlockSpwan(void) {
-	srand(time(NULL));
-	return rand() % 7; // 0~6±îÁö...
+// ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
+int BlockSpwan(int seed) {
+	int rnd = rand();
+	return rnd % 7; // 0~6ï¿½ï¿½ï¿½ï¿½...
 
 }
 
 
 
-// °áÁ¤µÈ ºí·Ï ¸Ç À§¿¡¼­ Ãâ·ÂÇÏ±â
-void BlockSpwan2(int(*arr)[12], int* nType) {
-	//*nType = BlockSpwan();
+// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½Ï±ï¿½
+void BlockSpwan2(int(*arr)[12], int* nType, int seed) {
+	*nType = BlockSpwan(seed);
 
 	switch (*nType) {
 	case  0:
