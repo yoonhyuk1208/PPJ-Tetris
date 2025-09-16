@@ -1,20 +1,27 @@
 // 테트리스 // 
 
 #define _CRT_SECURE_NO_WARNINGS
-#include<stdio.h>
-#include<string.h>
-#include<stdlib.h>
-#include<time.h>
-#include<ctype.h>
-#include<windows.h>
-#include<time.h>
-#include<conio.h>
-#include"Screen.h"
-#include"PanData.h"
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <time.h>
+#include <ctype.h>
+#include <windows.h>
+#include <time.h>
+#include <conio.h>
+#include <inttypes.h>
+
+#include "Screen.h"
+#include "PanData.h"
 #include "MapUI.h"
 #include "BlockData.h"
 #include "BlockMove.h"
 #include "BlockSpwan.h"
+#include "AutoPlay.h"
+#include "Weights.h"
+#include "Tuner.h"
+#include "GameState.h"
 
 // 소리 출력 PlaySound함수
 #include<mmsystem.h>
@@ -32,20 +39,49 @@ int nSpawning; // 1이면 내려가는 중, 0이면 스폰준비완료
 int nSpeed; // 내려가는 속도 조절
 
 
-typedef enum _STAGE {
-	READY, RUNNING, RESULT //  시작화면 / 실행화면 / 결과화면
-}STAGE;
+
+typedef enum { MODE_NORMAL=0, MODE_40L=1 } GAME_MODE;
+GAME_MODE gMode = MODE_NORMAL;
+
+int gLinesCleared = 0;
+int gPiecesUsed   = 0;
+
+// 고해상도 타이머
+static LARGE_INTEGER gFreq, gT0, gT1;
+static void SprintTimerInit(){ QueryPerformanceFrequency(&gFreq); }
+static void SprintTimerStart(){ QueryPerformanceCounter(&gT0); }
+static int64_t SprintTimerStopMs(){
+    QueryPerformanceCounter(&gT1);
+    return (int64_t)((gT1.QuadPart - gT0.QuadPart) * 1000LL / gFreq.QuadPart);
+}
+
+static void SaveRecord40L(int64_t ms, int pieces) {
+    FILE *fp = fopen("records_40L.csv","a");
+    if (!fp) return;
+    SYSTEMTIME st; GetLocalTime(&st);
+    fprintf(fp, "%04d-%02d-%02d %02d:%02d:%02d,%" PRId64 ",%d\n",
+            st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond,
+            (int64_t)ms, pieces);
+    fclose(fp);
+}
+
 STAGE Stage;
 
 
-void init() {
-	// 맵 배열 구성 20x10
-	PanMap(nArr); // 25x12배열에서 모서리들을 ▩ 블록으로 우선 채운다.
-	
-	Stage = READY;
-	nRot = 1;
-	nSpawning = 0;
-	nSpeed = 500; 
+void init(){
+    PanMap(nArr);
+    Stage = READY;
+    nRot = 1;
+    nSpawning = 0;
+    nSpeed = 500;
+
+    gMode = MODE_NORMAL;
+    gLinesCleared = 0;
+    gPiecesUsed   = 0;
+    SprintTimerInit();
+
+    // 가중치 로드 (없으면 기본)
+    if(!WeightsLoad("weights_40L.csv")) WeightsSetDefault40L();
 }
 
 
@@ -59,18 +95,22 @@ void Update() {
 		//브금 재생
 		// 블록 생성하기 
 		// 현재 1,1 좌표에서 생성되어 내려온다.
-		if (nSpawning == 0) {
-			nBlockType = BlockSpwan();
-			nBlockType2 = BlockSpwan();
-			BlockSpwan2(nArr, &nBlockType);
-
-			nSpawning=1;
-		}
-		if (nSpawning == 3) {
-			nBlockType = nBlockType2;
+		if (nSpawning == 0){
+			nBlockType  = BlockSpwan();
 			nBlockType2 = BlockSpwan();
 			BlockSpwan2(nArr, &nBlockType);
 			nSpawning = 1;
+			gPiecesUsed++;
+			AutoPlay(nBlockType, nBlockType2, (gMode==MODE_40L));
+		}
+		if (nSpawning == 3){
+			nBlockType  = nBlockType2;
+			nBlockType2 = BlockSpwan();
+			BlockSpwan2(nArr, &nBlockType);
+			nSpawning = 1;
+			nRot = 1;
+			gPiecesUsed++;
+			AutoPlay(nBlockType, nBlockType2, (gMode==MODE_40L));
 		}
 
 
@@ -118,22 +158,28 @@ void Update() {
 		//===================================
 
 		// 완성된 행 검사 후 빼기
+		int clearedThisPass = 0;
 		int m = 0;
 		for (int i = 1; i < 21; i++) {
-			for (int j = 1; j < 11; j++) {
-				if (nArr[i][j] == 2) {
-					m++;
-				}
-			}
-			if (m == 10) { // 행 완성 시
-				nScore++; // 500점 추가
-				for (int m = i; m >1; m--) {
-					for (int n = 1; n < 11; n++) {
-						nArr[m][n] = nArr[m - 1][n];
-					}
-				}
+			for (int j = 1; j < 11; j++) if (nArr[i][j] == 2) m++;
+			if (m == 10) {
+				clearedThisPass++;
+				for (int r = i; r > 1; r--)
+					for (int c = 1; c < 11; c++)
+						nArr[r][c] = nArr[r-1][c];
+				for (int c = 1; c < 11; c++) nArr[1][c] = 0;
+				i--; // 당겨진 줄 재검사
 			}
 			m = 0;
+		}
+
+		if (gMode == MODE_40L && clearedThisPass > 0){
+			gLinesCleared += clearedThisPass;
+			if (gLinesCleared >= 40){
+				int64_t ms = SprintTimerStopMs();
+				SaveRecord40L(ms, gPiecesUsed);
+				Stage = RESULT;
+			}
 		}
 
 		// 게임 패배 조건 - nArr의 3행에 2가 저장된다면 gg
@@ -162,9 +208,10 @@ void Render() {
 	switch (Stage) {
 	case READY :
 		MapReady1();
-		if (Curtime % 1000 > 500) { // 깜빡임
-			MapReady2();
-		}
+		if (Curtime % 1000 > 500) MapReady2();
+		ScreenPrint(26, 2, "Press '1' = NORMAL");
+		ScreenPrint(26, 3, "Press '2' = 40-LINE Sprint");
+		ScreenPrint(26, 4, "Press '3' = Auto-Tune 40L");
 		break;
 	case RUNNING :
 		//=============================
@@ -185,8 +232,18 @@ void Render() {
 		}
 		// 다음 블록을 우측에서 미리 출력
 		MapNext(&nBlockType2);
-		MapScore(&nScore);
-		//==============================
+
+		if (gMode == MODE_40L){
+			LARGE_INTEGER now; QueryPerformanceCounter(&now);
+			long long ms = (now.QuadPart - gT0.QuadPart) * 1000LL / gFreq.QuadPart;
+			char buf[64];
+			ScreenPrint(26, 2, "== 40L SPRINT ==");
+			sprintf(buf, "Lines: %d / 40", gLinesCleared);                   ScreenPrint(26, 4, buf);
+			sprintf(buf, "Pieces: %d", gPiecesUsed);                         ScreenPrint(26, 5, buf);
+			snprintf(buf, sizeof(buf), "Time: %" PRId64 " ms", (int64_t)ms); ScreenPrint(26, 6, buf);
+		} else {
+			MapScore(&nScore);
+		}
 		break;
 	case RESULT:
 		MapResult(&nScore);
@@ -211,6 +268,44 @@ int main(void) {
 			if (_kbhit()) {
 				nKey = _getch();
 				int k = 1;
+				if (Stage == READY){
+					PanMap(nArr);
+					nRot = 1; nSpawning = 0;
+					gLinesCleared = 0; gPiecesUsed = 0;
+					if (nKey == '1'){
+						gMode = MODE_NORMAL;
+						PlaySound(TEXT("tetris.wav"), NULL, SND_ASYNC | SND_LOOP);
+						Stage = RUNNING;
+					}
+					if (nKey == '2'){
+						gMode = MODE_40L;
+						gLinesCleared = 0;
+						gPiecesUsed   = 0;
+						PlaySound(TEXT("tetris.wav"), NULL, SND_ASYNC | SND_LOOP);
+						SprintTimerStart();
+						Stage = RUNNING;
+					}
+					if(nKey == '3'){
+						 // 화면에 진행 상태 표시
+						ScreenClear();
+						ScreenPrint(5, 4, "[Auto-Tune] Running... (trials=5, iters=300)");
+						ScreenPrint(5, 6, "Please wait. This will block the game.");
+						ScreenFlipping();
+
+						RunAutoTune40L(/*trials=*/5, /*iters=*/300, "weights_40L.csv");
+
+						// 완료 표시 + 최신 가중치 로드
+						WeightsLoad("weights_40L.csv");
+						init();
+						ScreenClear();
+						ScreenPrint(5, 4, "[Auto-Tune] Done! New weights loaded.");
+						ScreenPrint(5, 6, "Press any key to continue...");
+						ScreenFlipping();
+						_getch();
+
+						Stage = READY;
+					}
+				}
 				if (nKey == 13) {
 					PlaySound(TEXT("tetris.wav"), NULL, SND_ASYNC | SND_LOOP);
 					Stage = RUNNING;

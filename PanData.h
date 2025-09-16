@@ -1,7 +1,7 @@
 #pragma once
 
 // 20x10 �� ��
-int nArr[22][12] = { 0, };
+int nArr[22][12];
 void PanMap(int nArr[22][12]);
 
 
