@@ -19,6 +19,8 @@
 #include "Weights.h"
 #include "Tuner.h"
 #include "GameState.h"
+#include "NNTrain.h"
+#include "NNEval.h"
 
 // 소리 출력 PlaySound함수
 #include <mmsystem.h>
@@ -106,6 +108,24 @@ static void TuneProgressUI(
     ScreenPrint(5,10, buf);
 
     ScreenPrint(5,12, "This blocks the game. Please wait...");
+    ScreenFlipping();
+}
+
+static void NNTrainProgressUI(int epoch, int epochs, int mb, int total_mb, float train_loss, float val_loss){
+    char buf[128];
+    ScreenClear();
+    ScreenPrint(5,3,"[NN Training (C-only)]");
+    snprintf(buf,sizeof(buf),"Epoch %d / %d   (%d/%d)", epoch, epochs, mb, total_mb);
+    ScreenPrint(5,4,buf);
+    if(train_loss>=0){
+        snprintf(buf,sizeof(buf),"Train Loss: %.6f", train_loss);
+        ScreenPrint(5,6,buf);
+    }
+    if(val_loss>=0){
+        snprintf(buf,sizeof(buf),"Val   Loss: %.6f", val_loss);
+        ScreenPrint(5,7,buf);
+    }
+    ScreenPrint(5,9,"This blocks the game. Press nothing :)");
     ScreenFlipping();
 }
 
@@ -266,6 +286,7 @@ static void Render() {
         ScreenPrint(26, 2, "Press '1' = NORMAL");
         ScreenPrint(26, 3, "Press '2' = 40-LINE Sprint");
         ScreenPrint(26, 4, "Press '3' = Auto-Tune 40L");
+		ScreenPrint(26, 5, "Press '4' = Train NN (C)");
         break;
 
     case RUNNING: {
@@ -320,7 +341,7 @@ int main(void) {
     init();  // ★ 한 번만 초기화
 
     while (1) {
-        if (_kbhit()) {
+		if (_kbhit()) {
             int nKey = _getch();
 
             // ----- READY 상태에서 모드 선택 -----
@@ -357,6 +378,27 @@ int main(void) {
 					_getch();
 					Stage = READY;
                 }
+				else if (nKey == '4'){
+					ScreenClear();
+					ScreenPrint(5,4,"[NN Training] Loading data and starting...");
+					ScreenFlipping();
+				
+					// 예시 하이퍼파라미터: hidden=128, epochs=40, lr=1e-3, batch=512, val_split=0.1
+					int ok = NN_TrainFromBin("train.bin", "nn_weights.bin",
+											 /*hidden=*/128, /*epochs=*/40, /*lr=*/1e-3f,
+											 /*batch=*/512, /*val_split=*/0.10f,
+											 NNTrainProgressUI);
+				
+					// 학습 완료 후 가중치 재적용
+					if(ok) NN_Load("nn_weights.bin");
+				
+					ScreenClear();
+					ScreenPrint(5,4, ok ? "[NN Training] Done! weights reloaded." : "[NN Training] Failed.");
+					ScreenPrint(5,6,"Press any key to continue...");
+					ScreenFlipping();
+					_getch();
+					Stage = READY;
+				}
                 else if (nKey == 13){ // Enter
                     PlaySound(TEXT("tetris.wav"), NULL, SND_ASYNC | SND_LOOP);
                     Stage = RUNNING;

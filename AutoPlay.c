@@ -1,17 +1,24 @@
-#include <limits.h>
+#include <stdio.h>
 #include <string.h>
-#include "PanData.h"
-#include "BlockData.h"   // BlockArr[type][rot][4][4]
-#include "BlockMove.h"   // Rotate/LeftMove/RightMove/DownMove
-#include "GameState.h"   // nRot, nSpawning, Stage 등
+#include <limits.h>
 #include "AutoPlay.h"
+#include "BlockData.h"
+#include "BlockMove.h"
+#include "PanData.h"
+#include "Weights.h"
+#include "NNEval.h"
 
-#define USE_BLOG_EVAL 1  // 블로그식(4-특징) 평가 사용
+// 외부 전역
+extern int nArr[H][W];
+extern int nRot;
+extern int nSpawning;
+extern int nBlockType, nBlockType2;
+extern BLOCK_POS Block_pos[4];
 
-// ========== 내부 유틸 ==========
+// ===== 유틸 =====
 
-// 현재 nArr에서 낙하 중 조각(값=1)의 가장 왼쪽 열
-static int current_piece_leftmost_col(void){
+// 현재 조각의 가장 왼쪽 열 찾기
+static int current_piece_leftmost_col(){
     extern int nArr[H][W];
     int mn = 999;
     for(int i=PLAY_TOP;i<=PLAY_BOTTOM;i++)
@@ -21,8 +28,7 @@ static int current_piece_leftmost_col(void){
     return mn;
 }
 
-// 블록 4x4 마스크의 경계 (min/max 행·열) 계산
-// AutoPlay.c
+// 마스크 범위
 static void mask_bounds(int type, int rot, int* minR, int* maxR, int* minC, int* maxC){
     *minR = 4;  *maxR = -1;
     *minC = 4;  *maxC = -1;
@@ -44,9 +50,8 @@ static void mask_bounds(int type, int rot, int* minR, int* maxR, int* minC, int*
         *maxR = *maxC = 0;
     }
 }
-
-
-static void copy_and_clean_from(int dst[H][W], const int src[H][W]){
+// 보드 복사 + 낙하 블록 제거
+static void copy_and_clean(int dst[H][W], const int src[H][W]){
     memcpy(dst, src, sizeof(int)*H*W);
     for(int i=PLAY_TOP;i<=PLAY_BOTTOM;i++)
         for(int j=PLAY_LEFT;j<=PLAY_RIGHT;j++)
@@ -59,6 +64,7 @@ typedef struct {
     int holes;        // 구멍 수
     int bump;         // 인접 열 높이 차의 총합
 } Feats;
+
 
 static void compute_features(const int F[H][W], Feats* ft){
     memset(ft,0,sizeof(*ft));
@@ -81,10 +87,10 @@ static void compute_features(const int F[H][W], Feats* ft){
     for(int j=PLAY_LEFT;j<PLAY_RIGHT;j++)
         ft->bump += (h[j]>h[j+1] ? h[j]-h[j+1] : h[j+1]-h[j]);
 }
+// ===== 휴리스틱 =====
 
-// 블로그식 평가식(라인 보상 + 높이/홀/범피 페널티)
-#include "Weights.h"
-static int evaluate_field_blog(const int F[H][W], int lines_last){
+// 단순 휴리스틱 평가
+int evaluate_field(const int F[H][W], int lines_last){
     Feats f; compute_features(F, &f);
 
     int lineReward = 0;
@@ -101,7 +107,6 @@ static int evaluate_field_blog(const int F[H][W], int lines_last){
     return score;
 }
 
-// 조각 드랍+고정+라인클리어 시뮬 (성공=1, 실패=0)
 int sim_drop_lock_clear_ex(int F[H][W], int type, int rot, int xLeft, int* lines_out){
     int minR,maxR,minC,maxC; mask_bounds(type, rot, &minR,&maxR,&minC,&maxC);
     int width = maxC - minC + 1;
@@ -155,115 +160,80 @@ int sim_drop_lock_clear_ex(int F[H][W], int type, int rot, int xLeft, int* lines
     return 1;
 }
 
-// ========== 플래너(탐색) ==========
+// NN 혼합 평가
+static int evaluate_field_mixed(const int F[H][W], int lines_last){
+    int base = evaluate_field(F, lines_last);
+    if(gNN.ready){
+        float x[FEAT_DIM]; NN_ExtractFeatures(F,x);
+        float y = NN_Predict(&gNN,x);
+        float alpha = 0.3f;
+        float combined = (1.0f-alpha)*base + alpha*y;
+        return (int)combined;
+    }
+    return base;
+}
 
-int AutoPlanBest(const int board[H][W], int curType, int nextType,
-                 int* outRot, int* outLeft, int* outScore, int fast)
-{
-    const int NEG_INF = -0x3f3f3f3f;
+// ===== 오토플랜 =====
+int AutoPlanBest(const int F[H][W], int cur, int nxt,
+    int* rot, int* left, int* score, int fast){
+    int bestScore=INT_MIN;
+    int bestRot=0, bestLeft=PLAY_LEFT;
 
-    int bestScore = NEG_INF;
-    int bestRot   = 0;
-    int bestLeft  = PLAY_LEFT;
-
-    // 타이브레이커(보수적)
-    int tie_holes = INT_MAX, tie_aggh = INT_MAX, tie_bump = INT_MAX;
-
-    for (int rot=0; rot<4; ++rot){
+    for(int r=0;r<4;r++){
         int minR,maxR,minC,maxC;
-        mask_bounds(curType, rot, &minR,&maxR,&minC,&maxC);
-        int width = maxC - minC + 1;
-        int Lmin  = PLAY_LEFT;
-        int Lmax  = PLAY_RIGHT - width + 1;
-
-        for (int xLeft=Lmin; xLeft<=Lmax; ++xLeft){
-            int tmp1[H][W]; copy_and_clean_from(tmp1, board);
-            int lines1=0;
-            if (!sim_drop_lock_clear_ex(tmp1, curType, rot, xLeft, &lines1)) continue;
-
-            int s1 = evaluate_field_blog(tmp1, lines1);
-            int total = s1;
-
-            if (!fast){
-                int bestNext = NEG_INF;
-                for (int rot2=0; rot2<4; ++rot2){
-                    int mnR2,mxR2,mnC2,mxC2; mask_bounds(nextType, rot2, &mnR2,&mxR2,&mnC2,&mxC2);
-                    int width2 = mxC2 - mnC2 + 1;
-                    int Lmin2  = PLAY_LEFT;
-                    int Lmax2  = PLAY_RIGHT - width2 + 1;
-
-                    for (int xLeft2=Lmin2; xLeft2<=Lmax2; ++xLeft2){
-                        int tmp2[H][W]; memcpy(tmp2, tmp1, sizeof(tmp2));
-                        int lines2=0;
-                        if (!sim_drop_lock_clear_ex(tmp2, nextType, rot2, xLeft2, &lines2)) continue;
-                        int s2 = evaluate_field_blog(tmp2, lines2);
-                        if (s2 > bestNext) bestNext = s2;
-                    }
-                }
-                total = s1 + bestNext;
-            }
-
-            // 타이브레이커: holes → agg_height → bumpiness
-            Feats f; compute_features(tmp1, &f);
-            int choose = 0;
-            if (total > bestScore) choose = 1;
-            else if (total == bestScore){
-                if (f.holes < tie_holes) choose = 1;
-                else if (f.holes == tie_holes){
-                    if (f.agg_height < tie_aggh) choose = 1;
-                    else if (f.agg_height == tie_aggh){
-                        if (f.bump < tie_bump) choose = 1;
-                    }
-                }
-            }
-
-            if (choose){
-                bestScore = total;
-                bestRot   = rot;
-                bestLeft  = xLeft;
-                tie_holes = f.holes;
-                tie_aggh  = f.agg_height;
-                tie_bump  = f.bump;
+        mask_bounds(cur,r,&minR,&maxR,&minC,&maxC);
+        int width=maxC-minC+1;
+        for(int x=PLAY_LEFT;x<=PLAY_RIGHT-width+1;x++){
+            int tmp[H][W]; copy_and_clean(tmp,F);
+            int cleared=0;
+            if(!sim_drop_lock_clear_ex(tmp,cur,r,x,&cleared)) continue;
+            int sc = evaluate_field_mixed(tmp,cleared);
+            if(sc>bestScore){
+                bestScore=sc;
+                bestRot=r; bestLeft=x;
             }
         }
     }
 
-    if (bestScore == NEG_INF) return 0;
-
-    if (outRot)   *outRot   = bestRot;
-    if (outLeft)  *outLeft  = bestLeft;
-    if (outScore) *outScore = bestScore;
-    return 1;
+    *rot=bestRot; *left=bestLeft; *score=bestScore;
+    return (bestScore==INT_MIN)?0:1;
 }
 
-// ========== 실행(조작) ==========
+void DumpSample(const int F[H][W], int score) {
+    FILE* fp = fopen("train.bin","ab");
+    if(!fp) return;
+    float x[FEAT_DIM];
+    NN_ExtractFeatures(F, x);
+    fwrite(x, sizeof(float), FEAT_DIM, fp);
+    float y = (float)score;
+    fwrite(&y, sizeof(float), 1, fp);
+    fclose(fp);
+}
 
-void AutoPlay(int curType, int nextType, int sprintMode){
+// ===== 오토플레이 실행 =====
+void AutoPlay(int curType,int nextType,int sprintMode){
     (void)sprintMode;
-
-    extern int nArr[H][W];
-    int bestRot, bestLeft, bestScore;
-    if (!AutoPlanBest((const int (*)[W])nArr, curType, nextType,
-                      &bestRot, &bestLeft, &bestScore, /*fast=*/0)) {
-        // 놓을 곳이 없으면 그냥 드랍
-        DownMove(nArr);
-        nSpawning = 3; nRot = 1;
+    int rot,left,score;
+    if(!AutoPlanBest((const int(*)[W])nArr,curType,nextType,&rot,&left,&score,0))
         return;
-    }
 
+    int tmp[H][W]; copy_and_clean(tmp,(const int(*)[W])nArr);
+    int cleared=0;
+    if(sim_drop_lock_clear_ex(tmp,curType,rot,left,&cleared)){
+        DumpSample(tmp, score);   // 여기서 실제 플레이 결과를 학습 데이터로 저장
+    }
+    
     // 회전
-    for (int k=0; k<bestRot; ++k){
-        Rotate(nArr, curType, Block_pos, nRot);
-        nRot = (nRot + 1) & 3;
+    for(int k=0;k<rot;k++){
+        Rotate(nArr,curType,Block_pos,nRot);
+        nRot=(nRot+1)&3;
     }
-
-    // 좌/우
-    int curLeft = current_piece_leftmost_col();
-    int guard=0, GUARD_MAX=40;
-    while (curLeft > bestLeft && guard++ < GUARD_MAX){ LeftMove(nArr);  int nl=current_piece_leftmost_col(); if(nl==curLeft) break; curLeft=nl; }
-    while (curLeft < bestLeft && guard++ < GUARD_MAX){ RightMove(nArr); int nl=current_piece_leftmost_col(); if(nl==curLeft) break; curLeft=nl; }
-
+    // 이동
+    int curLeft=current_piece_leftmost_col();
+    while(curLeft>left){ LeftMove(nArr); curLeft--; }
+    while(curLeft<left){ RightMove(nArr); curLeft++; }
     // 하드드랍
     DownMove(nArr);
-    nSpawning = 3; nRot = 1;
+    nSpawning=3;
+    nRot=1;
 }
