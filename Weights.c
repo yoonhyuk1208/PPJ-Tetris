@@ -12,6 +12,11 @@ void WeightsSetDefault40L(void){
     gW.W_agg_height = 510;
     gW.W_holes      = 360;
     gW.W_bump       = 180;
+    gW.W_wells      = 40;
+    gW.W_row_trans  = 32;
+    gW.W_col_trans  = 18;
+    gW.W_hole_depth = 10;
+    gW.W_blockades  = 60;
 }
 
 static int parse_line(const char* s, char* key, int* val){
@@ -30,6 +35,8 @@ static void set_field(Weights* w, const char* k, int v){
     #define SET(name) if(!strcmp(k,#name)) { w->name = v; return; }
     SET(W_lines1) SET(W_lines2) SET(W_lines3) SET(W_lines4)
     SET(W_agg_height) SET(W_holes) SET(W_bump)
+    SET(W_wells) SET(W_row_trans) SET(W_col_trans)
+    SET(W_hole_depth) SET(W_blockades)
     #undef SET
 }
 
@@ -50,9 +57,13 @@ int WeightsSave(const char* path, const Weights* w){
     if(!fp) return 0;
     fprintf(fp,
         "W_lines1=%d\nW_lines2=%d\nW_lines3=%d\nW_lines4=%d\n"
-        "W_agg_height=%d\nW_holes=%d\nW_bump=%d\n",
+        "W_agg_height=%d\nW_holes=%d\nW_bump=%d\n"
+        "W_wells=%d\nW_row_trans=%d\nW_col_trans=%d\n"
+        "W_hole_depth=%d\nW_blockades=%d\n",
         w->W_lines1, w->W_lines2, w->W_lines3, w->W_lines4,
-        w->W_agg_height, w->W_holes, w->W_bump
+        w->W_agg_height, w->W_holes, w->W_bump,
+        w->W_wells, w->W_row_trans, w->W_col_trans,
+        w->W_hole_depth, w->W_blockades
     );
     fclose(fp);
     return 1;

@@ -1,300 +1,118 @@
 #include "BlockData.h"
+#include "PanData.h"
 
-
-
-
-// ¡¬∑Œ ¿Ãµø
-void LeftMove(int(*arr)[12]) {
-	// 1) ¿˙¿Âπﬁ±‚
-	int n = 0;
-	for (int i = 1; i < 21; i++) {
-		for (int j = 1; j < 11; j++) {
-			if (arr[i][j] == 1) { // 2¬˜ø¯ πËø≠ ªÛ¿« 1ø° ¥Î«— ≈Î¡¶±«∏∏ ∞°¡¯¥Ÿ.
-				arr[i][j] = 0;
-				Block_pos[n].Pos.x = i;
-				Block_pos[n].Pos.y = j;
-				n++;
-			}
-		}
-	}
-
-	// 2) (¡¬∑Œ) ¿ÁπËø≠«œ±‚
-	for (int i = 0; i < 4; i++) {
-		arr[Block_pos[i].Pos.x][Block_pos[i].Pos.y - 1] = 1;
-	}
+// ?? ?? ?? ??? (? 1)
+static int collect_piece(int (*arr)[12], POS out[4]){
+    int n = 0;
+    for (int i = 1; i < 21; i++){
+        for (int j = 1; j < 11; j++){
+            if (arr[i][j] == 1){
+                out[n].x = i;
+                out[n].y = j;
+                n++;
+            }
+        }
+    }
+    return n;
 }
 
-
-// øÏ∑Œ ¿Ãµø
-void RightMove(int(*arr)[12]) {
-	// 1) ¿˙¿Âπﬁ±‚
-	int n = 0;
-	for (int i = 1; i < 21; i++) {
-		for (int j = 1; j < 11; j++) {
-			if (arr[i][j] == 1) {
-				arr[i][j] = 0;
-				Block_pos[n].Pos.x = i;
-				Block_pos[n].Pos.y = j;
-				n++;
-			}
-		}
-	}
-
-	// 2) (øÏ∑Œ) ¿ÁπËø≠«œ±‚
-	for (int i = 0; i < 4; i++) {
-		arr[Block_pos[i].Pos.x][Block_pos[i].Pos.y + 1] = 1;
-	}
+static int is_blocked(int (*arr)[12], int x, int y){
+    return arr[x][y] >= 2;
 }
 
-// πŸ∑Œ ≥ª∏Æ±‚
-void DownMove(int(*arr)[12]) {
-	// 1) ¿˙¿Âπﬁ±‚
-	int n = 0;
-	for (int i = 1; i < 21; i++) {
-		for (int j = 1; j < 11; j++) {
-			if (arr[i][j] == 1) {
-				arr[i][j] = 0;
-				Block_pos[n].Pos.x = i;
-				Block_pos[n].Pos.y = j;
-				n++;
-			}
-		}
-	}
-
-	// 2) æ∆∑°∑Œ πŸ∑Œ ≥ª∑¡ ¿ÁπËø≠«œ±‚
-	int m = 1;
-	int v = 1;
-	while (v) {
-		for (int i = 0; i < 4; i++) {
-			if (arr[Block_pos[i].Pos.x + m][Block_pos[i].Pos.y] == 2) {// ≥ª∑¡∞°∞‘ µ… ∞¯∞£¿Ã 
-				v = 0;
-				break;
-			}
-			else if (i == 3) {
-				m++;
-			}
-		}
-	}
-	for (int i = 0; i < 4; i++) {
-		arr[Block_pos[i].Pos.x + m-1][Block_pos[i].Pos.y] = 2;
-	}
-
-
-	
+void LeftMove(int (*arr)[12]){
+    POS cur[4];
+    if (collect_piece(arr, cur) != 4) return;
+    for (int i = 0; i < 4; i++){
+        if (is_blocked(arr, cur[i].x, cur[i].y - 1)) return;
+    }
+    for (int i = 0; i < 4; i++) arr[cur[i].x][cur[i].y] = 0;
+    for (int i = 0; i < 4; i++) arr[cur[i].x][cur[i].y - 1] = 1;
 }
 
+void RightMove(int (*arr)[12]){
+    POS cur[4];
+    if (collect_piece(arr, cur) != 4) return;
+    for (int i = 0; i < 4; i++){
+        if (is_blocked(arr, cur[i].x, cur[i].y + 1)) return;
+    }
+    for (int i = 0; i < 4; i++) arr[cur[i].x][cur[i].y] = 0;
+    for (int i = 0; i < 4; i++) arr[cur[i].x][cur[i].y + 1] = 1;
+}
 
-// »∏¿¸
-void Rotate(int(*arr)[12], int nType, BLOCK_POS* pos, int nRot) {
-	int n = 0;
-	switch (nType) {
-	case 0:
-		// 1) ¿˙¿Âπﬁ±‚
-		for (int i = 1; i < 21; i++) {
-			for (int j = 1; j < 11; j++) {
-				if (arr[i][j] == 1) {
-					arr[i][j] = 0;
-					Block_pos[n].Pos.x = i;
-					Block_pos[n].Pos.y = j;
-					n++;
-				}
-			}
-		}
+// ? ? ??? ??. ??? ?? ??? ??(2)?? 1 ??
+int SoftDropOne(int (*arr)[12], int curType){
+    POS cur[4];
+    if (collect_piece(arr, cur) != 4) return 0;
+    for (int i = 0; i < 4; i++){
+        if (is_blocked(arr, cur[i].x + 1, cur[i].y)){
+            for (int k = 0; k < 4; k++) arr[cur[k].x][cur[k].y] = 2 + curType;
+            return 1;
+        }
+    }
+    for (int i = 0; i < 4; i++) arr[cur[i].x][cur[i].y] = 0;
+    for (int i = 0; i < 4; i++) arr[cur[i].x + 1][cur[i].y] = 1;
+    return 0;
+}
 
-		// 2) »∏¿¸Ω√ƒ— ¿ÁπËø≠«œ±‚
-		if (nRot % 2 != 0) {
-			for (int i = 0; i < 4; i++) {
-				for (int j = 0; j < 4; j++) {
-					if (Block0[nRot][i][j] == 1) {
-						arr[i + Block_pos[1].Pos.x - 1][j + Block_pos[1].Pos.y] = Block0[nRot][i][j];
-					}
-				}
-			}
-		}
-		else {
-			for (int i = 0; i < 4; i++) {
-				for (int j = 0; j < 4; j++) {
-					if (Block0[nRot][i][j] == 1) {
-						arr[i + Block_pos[1].Pos.x - 1][j + Block_pos[1].Pos.y - 3] = Block0[nRot][i][j]; // πËø≠ø‰º“ ∏∂¡ˆ∏∑ ¡§ºˆµÈ¿∫ »∏¿¸ Ω√ ∏º«¿ª ¡∂¿≤«ÿ¡ÿ¥Ÿ.
-					}
-				}
-			}
-		}
-		break;
-	case 1:
-		// 1) ¿˙¿Âπﬁ±‚
+// ????: ?? ??? ??/?? ?? ??
+void HardDrop(int (*arr)[12], int curType){
+    POS cur[4];
+    if (collect_piece(arr, cur) != 4) return;
+    int minDrop = 30;
+    for (int i = 0; i < 4; i++){
+        int d = 0;
+        int x = cur[i].x;
+        int y = cur[i].y;
+        while (!is_blocked(arr, x + d + 1, y)) d++;
+        if (d < minDrop) minDrop = d;
+    }
+    for (int i = 0; i < 4; i++) arr[cur[i].x][cur[i].y] = 0;
+    for (int i = 0; i < 4; i++) arr[cur[i].x + minDrop][cur[i].y] = 2 + curType;
+}
 
-		for (int i = 1; i < 21; i++) {
-			for (int j = 1; j < 11; j++) {
-				if (arr[i][j] == 1) {
-					arr[i][j] = 0;
-					Block_pos[n].Pos.x = i;
-					Block_pos[n].Pos.y = j;
-					n++;
-				}
-			}
-		}
+static int can_place(int (*arr)[12], int type, int rot, int baseX, int baseY){
+    for (int i = 0; i < 4; i++){
+        for (int j = 0; j < 4; j++){
+            if (BlockArr[type][rot][i][j]){
+                int x = baseX + i;
+                int y = baseY + j;
+                if (x < 1 || x > 20 || y < 1 || y > 10) return 0;
+                if (arr[x][y] >= 2) return 0;
+            }
+        }
+    }
+    return 1;
+}
 
-		// 2) »∏¿¸Ω√ƒ— ¿ÁπËø≠«œ±‚
-		if (nRot % 2 != 0) {
-			for (int i = 0; i < 4; i++) {
-				for (int j = 0; j < 4; j++) {
-					if (Block1[nRot][i][j] == 1) {
-						arr[i + Block_pos[1].Pos.x - 1][j + Block_pos[1].Pos.y] = Block1[nRot][i][j];
-					}
-				}
-			}
-		}
-		else {
-			for (int i = 0; i < 4; i++) {
-				for (int j = 0; j < 4; j++) {
-					if (Block1[nRot][i][j] == 1) {
-						arr[i + Block_pos[1].Pos.x - 1][j + Block_pos[1].Pos.y - 2] = Block1[nRot][i][j]; // πËø≠ø‰º“ ∏∂¡ˆ∏∑ ¡§ºˆµÈ¿∫ »∏¿¸ Ω√ ∏º«¿ª ¡∂¿≤«ÿ¡ÿ¥Ÿ.
-					}
-				}
-			}
-		}
-		break;
+int Rotate(int (*arr)[12], int nType, int nextRot){
+    POS cur[4];
+    if (collect_piece(arr, cur) != 4) return 0;
 
-	case 2:
-		// 1) ¿˙¿Âπﬁ±‚
+    int minX = cur[0].x, minY = cur[0].y;
+    for (int i = 1; i < 4; i++){
+        if (cur[i].x < minX) minX = cur[i].x;
+        if (cur[i].y < minY) minY = cur[i].y;
+    }
 
-		for (int i = 1; i < 21; i++) {
-			for (int j = 1; j < 11; j++) {
-				if (arr[i][j] == 1) {
-					arr[i][j] = 0;
-					Block_pos[n].Pos.x = i;
-					Block_pos[n].Pos.y = j;
-					n++;
-				}
-			}
-		}
+    const int kicks[6][2] = { {0,0},{0,-1},{0,1},{-1,0},{1,0},{0,-2} };
+    for (int k = 0; k < 6; k++){
+        int baseX = minX + kicks[k][0];
+        int baseY = minY + kicks[k][1];
+        if (!can_place(arr, nType, nextRot, baseX, baseY)) continue;
 
-		// 2) »∏¿¸Ω√ƒ— ¿ÁπËø≠«œ±‚
-		if (nRot % 2 != 0) {
-			for (int i = 0; i < 4; i++) {
-				for (int j = 0; j < 4; j++) {
-					if (Block2[nRot][i][j] == 1) {
-						arr[i + Block_pos[2].Pos.x-2][j + Block_pos[2].Pos.y-1] = Block2[nRot][i][j];
-					}
-				}
-			}
-		}
-		else {
-			for (int i = 0; i < 4; i++) {
-				for (int j = 0; j < 4; j++) {
-					if (Block2[nRot][i][j] == 1) {
-						arr[i + Block_pos[1].Pos.x-2][j + Block_pos[1].Pos.y - 1] = Block2[nRot][i][j]; // πËø≠ø‰º“ ∏∂¡ˆ∏∑ ¡§ºˆµÈ¿∫ »∏¿¸ Ω√ ∏º«¿ª ¡∂¿≤«ÿ¡ÿ¥Ÿ.
-					}
-				}
-			}
-		}
-		break;
-	case 3:
-		// 1) ¿˙¿Âπﬁ±‚
-
-		for (int i = 1; i < 21; i++) {
-			for (int j = 1; j < 11; j++) {
-				if (arr[i][j] == 1) {
-					arr[i][j] = 0;
-					Block_pos[n].Pos.x = i;
-					Block_pos[n].Pos.y = j;
-					n++;
-				}
-			}
-		}
-
-		// 2) »∏¿¸Ω√ƒ— ¿ÁπËø≠«œ±‚
-		if (nRot % 2 != 0) {
-			for (int i = 0; i < 4; i++) {
-				for (int j = 0; j < 4; j++) {
-					if (Block3[nRot][i][j] == 1) {
-						arr[i + Block_pos[1].Pos.x - 2][j + Block_pos[1].Pos.y ] = Block3[nRot][i][j];
-					}
-				}
-			}
-		}
-		else {
-			for (int i = 0; i < 4; i++) {
-				for (int j = 0; j < 4; j++) {
-					if (Block3[nRot][i][j] == 1) {
-						arr[i + Block_pos[1].Pos.x - 2][j + Block_pos[1].Pos.y - 1] = Block3[nRot][i][j]; // πËø≠ø‰º“ ∏∂¡ˆ∏∑ ¡§ºˆµÈ¿∫ »∏¿¸ Ω√ ∏º«¿ª ¡∂¿≤«ÿ¡ÿ¥Ÿ.
-					}
-				}
-			}
-		}
-		break;
-	case 4:
-		// 1) ¿˙¿Âπﬁ±‚
-
-		for (int i = 1; i < 21; i++) {
-			for (int j = 1; j < 11; j++) {
-				if (arr[i][j] == 1) {
-					arr[i][j] = 0;
-					Block_pos[n].Pos.x = i;
-					Block_pos[n].Pos.y = j;
-					n++;
-				}
-			}
-		}
-
-		// 2) »∏¿¸Ω√ƒ— ¿ÁπËø≠«œ±‚
-		if (nRot % 2 != 0) {
-			for (int i = 0; i < 4; i++) {
-				for (int j = 0; j < 4; j++) {
-					if (Block4[nRot][i][j] == 1) {
-						arr[i + Block_pos[1].Pos.x - 2][j + Block_pos[1].Pos.y] = Block4[nRot][i][j];
-					}
-				}
-			}
-		}
-		else {
-			for (int i = 0; i < 4; i++) {
-				for (int j = 0; j < 4; j++) {
-					if (Block4[nRot][i][j] == 1) {
-						arr[i + Block_pos[1].Pos.x - 2][j + Block_pos[1].Pos.y ] = Block4[nRot][i][j]; // πËø≠ø‰º“ ∏∂¡ˆ∏∑ ¡§ºˆµÈ¿∫ »∏¿¸ Ω√ ∏º«¿ª ¡∂¿≤«ÿ¡ÿ¥Ÿ.
-					}
-				}
-			}
-		}
-		break;
-	case 5:
-		break;
-	case 6:
-		// 1) ¿˙¿Âπﬁ±‚
-
-		for (int i = 1; i < 21; i++) {
-			for (int j = 1; j < 11; j++) {
-				if (arr[i][j] == 1) {
-					arr[i][j] = 0;
-					Block_pos[n].Pos.x = i;
-					Block_pos[n].Pos.y = j;
-					n++;
-				}
-			}
-		}
-
-		// 2) »∏¿¸Ω√ƒ— ¿ÁπËø≠«œ±‚
-		if (nRot % 2 != 0) {
-			for (int i = 0; i < 4; i++) {
-				for (int j = 0; j < 4; j++) {
-					if (Block6[nRot][i][j] == 1) {
-						arr[i + Block_pos[1].Pos.x - 2][j + Block_pos[1].Pos.y] = Block6[nRot][i][j];
-					}
-				}
-			}
-		}
-		else {
-			for (int i = 0; i < 4; i++) {
-				for (int j = 0; j < 4; j++) {
-					if (Block6[nRot][i][j] == 1) {
-						arr[i + Block_pos[1].Pos.x - 2][j + Block_pos[1].Pos.y-2] = Block6[nRot][i][j]; // πËø≠ø‰º“ ∏∂¡ˆ∏∑ ¡§ºˆµÈ¿∫ »∏¿¸ Ω√ ∏º«¿ª ¡∂¿≤«ÿ¡ÿ¥Ÿ.
-					}
-				}
-			}
-		}
-		break;
-	}
-	
-
+        for (int i = 0; i < 4; i++) arr[cur[i].x][cur[i].y] = 0;
+        for (int i = 0; i < 4; i++){
+            for (int j = 0; j < 4; j++){
+                if (BlockArr[nType][nextRot][i][j]){
+                    int tx = baseX + i;
+                    int ty = baseY + j;
+                    if (tx < 1 || tx > PLAY_BOTTOM || ty < 1 || ty > PLAY_RIGHT) continue; // Î∞©Ïñ¥Ï†Å Í≤ΩÍ≥Ñ Ï≤¥ÌÅ¨
+                    arr[tx][ty] = 1;
+                }
+            }
+        }
+        return 1;
+    }
+    return 0;
 }

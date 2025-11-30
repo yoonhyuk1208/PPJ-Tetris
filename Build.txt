@@ -1,1 +1,1 @@
-del *.o | gcc framework.c BlockData.c BlockMove.c BlockSpwan.c MapUI.c PanData.c Screen.c AutoPlay.c Weights.c Tuner.c NNEval.c NNTrain.c -o tetris.exe -lwinmm -O3 -march=native -flto -DNDEBUG -std=c11 -Wall
+del *.o | gcc framework.c BlockData.c BlockMove.c BlockSpwan.c MapUI.c PanData.c Screen.c AutoPlay.c Weights.c Tuner.c -o tetris.exe -lwinmm -O3 -march=native -flto -DNDEBUG -std=c11 -Wall

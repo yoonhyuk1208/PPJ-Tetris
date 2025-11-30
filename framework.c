@@ -1,4 +1,4 @@
-#define _CRT_SECURE_NO_WARNINGS
+ï»¿#define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -8,7 +8,6 @@
 #include <windows.h>
 #include <conio.h>
 #include <inttypes.h>
-
 #include "Screen.h"
 #include "PanData.h"
 #include "MapUI.h"
@@ -19,37 +18,50 @@
 #include "Weights.h"
 #include "Tuner.h"
 #include "GameState.h"
-#include "NNTrain.h"
-#include "NNEval.h"
-
-// ¼Ò¸® Ãâ·Â PlaySoundÇÔ¼ö
+// ì†Œë¦¬ ì¶œë ¥ PlaySoundí•¨ìˆ˜
 #include <mmsystem.h>
-
-// Å° °ª
+// í‚¤ ê°’
 #define LEFT  75
 #define RIGHT 77
 #define UP    72
 #define DOWN  80
-
-// ===== Àü¿ª »óÅÂ =====
-int nScore = 0;       // ´©Àû Á¡¼ö
-int nBlockType;       // ÇöÀç ºí·Ï
-int nBlockType2;      // ´ÙÀ½ ºí·Ï
-int nRot;             // È¸Àü ÀÎµ¦½º(0~3)
-int nSpawning;        // 0=½ºÆù´ë±â, 1=ÇÏ°­Áß, 3=°íÁ¤ ¿Ï·á
-int nSpeed;           // ³«ÇÏ ¼Óµµ(ms)
-int seed;             // ·£´ı ½Ãµå
-int check_clear = 0; // Å¬¸®¾î ¿©ºÎ
-
+#define COLOR_DEFAULT 0x07
+#define COLOR_ACTIVE  0x0B
+#define COLOR_LOCKED  0x0E
+// ===== ì „ì—­ ìƒíƒœ =====
+int nScore = 0;       // ëˆ„ì  ì ìˆ˜
+int nBlockType;       // í˜„ì¬ ë¸”ë¡
+int nBlockType2;      // ë‹¤ìŒ ë¸”ë¡
+int nHoldType;        // í™€ë“œ ë¸”ë¡(-1ì´ë©´ ë¹„ì–´ ìˆìŒ)
+int nNextQueue[NEXT_PREVIEW_COUNT]; // ë‹¤ìŒ ë¯¸ë¦¬ë³´ê¸° í
+int holdUsedThisTurn; // í˜„ì¬ ì¡°ê°ì—ì„œ í™€ë“œ ì‚¬ìš© ì—¬ë¶€
+int nRot;             // íšŒì „ ì¸ë±ìŠ¤(0~3)
+int nSpawning;        // 0=ìŠ¤í°ëŒ€ê¸°, 1=í•˜ê°•ì¤‘, 3=ê³ ì • ì™„ë£Œ
+int nSpeed;           // ë‚™í•˜ ì†ë„(ms)
+int seed;             // ëœë¤ ì‹œë“œ
+int check_clear = 0; // í´ë¦¬ì–´ ì—¬ë¶€
 typedef enum { MODE_NORMAL=0, MODE_40L=1 } GAME_MODE;
 GAME_MODE gMode = MODE_NORMAL;
 typedef enum { MANUAL, AUTO } CONTROL_MODE;
 CONTROL_MODE gControl = MANUAL;
-
-int gLinesCleared = 0;    // 40L ÁøÇà
+int gLinesCleared = 0;    // 40L ì§„í–‰
 int gPiecesUsed   = 0;
+static unsigned short ColorForType(int type){
+    // TETRIO-like palette (type index: Z,S,L,J,T,O,I)
+    static const unsigned short colors[7] = {
+        0x0C, // Z = red
+        0x0A, // S = green
+        0x06, // L = orange
+        0x01, // J = blue
+        0x0D, // T = purple
+        0x0E, // O = yellow
+        0x0B  // I = cyan
+    };
+    if(type < 0 || type > 6) return COLOR_DEFAULT;
+    return colors[type];
+}
 
-// °íÇØ»óµµ Å¸ÀÌ¸Ó (40L)
+// ê³ í•´ìƒë„ íƒ€ì´ë¨¸ (40L)
 static LARGE_INTEGER gFreq, gT0, gT1;
 static void SprintTimerInit(){ QueryPerformanceFrequency(&gFreq); }
 static void SprintTimerStart(){ QueryPerformanceCounter(&gT0); }
@@ -57,8 +69,7 @@ static int64_t SprintTimerStopMs(){
     QueryPerformanceCounter(&gT1);
     return (int64_t)((gT1.QuadPart - gT0.QuadPart) * 1000LL / gFreq.QuadPart);
 }
-
-// 40L °á°ú ÀúÀå
+// 40L ê²°ê³¼ ì €ì¥
 static void SaveRecord40L(int64_t ms, int pieces) {
     FILE *fp = fopen("records_40L.csv","a");
     if (!fp) return;
@@ -68,8 +79,57 @@ static void SaveRecord40L(int64_t ms, int pieces) {
             (int64_t)ms, pieces);
     fclose(fp);
 }
-
-// ÁøÇà Ç¥½Ã Äİ¹é(UI)
+static void RefreshNextHead(void){
+    nBlockType2 = nNextQueue[0];
+}
+static void ResetNextQueue(void){
+    for(int i=0;i<NEXT_PREVIEW_COUNT;i++){
+        nNextQueue[i] = BlockSpwan(seed);
+    }
+    RefreshNextHead();
+}
+static void AdvanceNextQueue(void){
+    for(int i=0;i<NEXT_PREVIEW_COUNT-1;i++)
+        nNextQueue[i] = nNextQueue[i+1];
+    nNextQueue[NEXT_PREVIEW_COUNT-1] = BlockSpwan(seed);
+    RefreshNextHead();
+}
+static void ClearActivePiece(void){
+    for (int i = 1; i < 21; i++) {
+        for (int j = 1; j < 11; j++) {
+            if (nArr[i][j] == 1) nArr[i][j] = 0;
+        }
+    }
+}
+static void SpawnPiece(int type, int resetHoldFlag){
+    nBlockType = type;
+    nRot = 0;
+    BlockSpwan2(nArr, nBlockType);
+    nSpawning = 1;
+    if(resetHoldFlag) holdUsedThisTurn = 0;
+    gPiecesUsed++;
+    if(gControl == AUTO)
+        AutoPlay(nBlockType, nBlockType2, (gMode==MODE_40L));
+}
+static void SpawnFromQueue(int resetHoldFlag){
+    int next = nNextQueue[0];
+    AdvanceNextQueue();
+    SpawnPiece(next, resetHoldFlag);
+}
+static void HoldCurrentPiece(void){
+    if (nSpawning != 1 || holdUsedThisTurn) return;
+    holdUsedThisTurn = 1;
+    ClearActivePiece();
+    if (nHoldType < 0){
+        nHoldType = nBlockType;
+        SpawnFromQueue(/*resetHoldFlag=*/0);
+    } else {
+        int swap = nHoldType;
+        nHoldType = nBlockType;
+        SpawnPiece(swap, /*resetHoldFlag=*/0);
+    }
+}
+// ì§„í–‰ í‘œì‹œ ì½œë°±(UI)
 static void TuneProgressUI(
     int iter, int iters,
     long long bestMs, long long minFastMs,
@@ -78,126 +138,75 @@ static void TuneProgressUI(
 ){
     char buf[128];
     int pct = (iter * 100) / (iters ? iters : 1);
-    int bar = pct / 5; // 20Ä­ ÁøÇà¹Ù
-
+    int bar = pct / 5; // 20ì¹¸ ì§„í–‰ë°”
     ScreenClear();
-
     ScreenPrint(5, 3,  "[Auto-Tune 40L]");
     snprintf(buf, sizeof(buf), "Iter: %d / %d (%d%%)", iter, iters, pct);
     ScreenPrint(5, 4, buf);
-
-    // ÁøÇà¹Ù (20Ä­)
+    // ì§„í–‰ë°” (20ì¹¸)
     char barbuf[32]; int i;
     for(i=0;i<20;i++) barbuf[i] = (i<bar)?'#':'-';
     barbuf[20]='\0';
     snprintf(buf, sizeof(buf), "[%s]", barbuf);
     ScreenPrint(5, 5, buf);
-
     snprintf(buf, sizeof(buf),
          "Best(ms): %" PRId64 "   MinFast(ms): %" PRId64 "   Span: %d",
          (int64_t)bestMs, (int64_t)minFastMs, span);
     ScreenPrint(5, 7, buf);
-
-    // °¡ÁßÄ¡ ÀÏºÎ º¸¿©ÁÖ±â
+    // ê°€ì¤‘ì¹˜ ì¼ë¶€ ë³´ì—¬ì£¼ê¸°
     snprintf(buf, sizeof(buf), "W_lines: %d/%d/%d/%d",
         best->W_lines1, best->W_lines2, best->W_lines3, best->W_lines4);
     ScreenPrint(5, 9, buf);
-
     snprintf(buf, sizeof(buf), "W_aggH=%d  W_holes=%d  W_bump=%d",
         best->W_agg_height, best->W_holes, best->W_bump);
     ScreenPrint(5,10, buf);
-
     ScreenPrint(5,12, "This blocks the game. Please wait...");
     ScreenFlipping();
 }
-
-static void NNTrainProgressUI(int epoch, int epochs, int mb, int total_mb, float train_loss, float val_loss){
-    char buf[128];
-    ScreenClear();
-    ScreenPrint(5,3,"[NN Training (C-only)]");
-    snprintf(buf,sizeof(buf),"Epoch %d / %d   (%d/%d)", epoch, epochs, mb, total_mb);
-    ScreenPrint(5,4,buf);
-    if(train_loss>=0){
-        snprintf(buf,sizeof(buf),"Train Loss: %.6f", train_loss);
-        ScreenPrint(5,6,buf);
-    }
-    if(val_loss>=0){
-        snprintf(buf,sizeof(buf),"Val   Loss: %.6f", val_loss);
-        ScreenPrint(5,7,buf);
-    }
-    ScreenPrint(5,9,"This blocks the game. Press nothing :)");
-    ScreenFlipping();
-}
-
-// ===== °ÔÀÓ ½ºÅ×ÀÌÆ® =====
+// ===== ê²Œì„ ìŠ¤í…Œì´íŠ¸ =====
 STAGE Stage;
 clock_t Oldtime = 0;
-
-// ===== ÃÊ±âÈ­ =====
+// ===== ì´ˆê¸°í™” =====
 static void init(){
-    PanMap(nArr);          // º¸µå ¸®¼Â
+    PanMap(nArr);          // ë³´ë“œ ë¦¬ì…‹
     Stage = READY;
 	gControl = MANUAL;
-    nRot = 1;
+    nRot = 0;
     nSpawning = 0;
     nSpeed = 500;
     nScore = 0;
-
+    nHoldType = -1;
+    holdUsedThisTurn = 0;
     gMode = MODE_NORMAL;
     gLinesCleared = 0;
     gPiecesUsed   = 0;
+    ResetNextQueue();
     SprintTimerInit();
-
-    // °¡ÁßÄ¡ ·Îµå (¾øÀ¸¸é ±âº»°ª)
+    // ê°€ì¤‘ì¹˜ ë¡œë“œ (ì—†ìœ¼ë©´ ê¸°ë³¸ê°’)
     if (!WeightsLoad("weights_40L.csv")) {
         WeightsSetDefault40L();
         WeightsSave("weights_40L.csv", &gW);
     }
 }
-
-// ===== ¾÷µ¥ÀÌÆ® =====
+// ===== ì—…ë°ì´íŠ¸ =====
 static void Update() {
     clock_t Curtime = clock();
-
     switch (Stage) {
     case READY:
         break;
-
     case RUNNING: {
-        // --- ½ºÆù & ¿ÀÅäÇÃ·¹ÀÌ(ÇÏµåµå¶ø) ---
+        // --- spawn & autoplay ---
         if (nSpawning == 0){
-            // NOTE: BlockSpwan/BlockSpwan2ÀÇ ½Ã±×´ÏÃ³°¡ (void)ÀÎ ¹öÀü ±âÁØ
-            //       ³× ÇÁ·ÎÁ§Æ®°¡ seed¸¦ ³Ñ±â´Â ÇüÅÂ¶ó¸é ÀÎÀÚ¸¸ ¸ÂÃçÁà!
-            nBlockType  = BlockSpwan(seed);
-            nBlockType2 = BlockSpwan(seed);
-            BlockSpwan2(nArr, &nBlockType, seed);
-
-            nSpawning = 1;
-            gPiecesUsed++;
-
-            // ½ºÆù Á÷ÈÄ ÃÖÀû ¼ö ½ÇÇà (2-ply; sprintMode ÇÃ·¡±× Àü´Ş)
-			if(gControl == AUTO)
-            	AutoPlay(nBlockType, nBlockType2, (gMode==MODE_40L));
+            SpawnFromQueue(/*resetHoldFlag=*/1);
         }
         if (nSpawning == 3){
-            nBlockType  = nBlockType2;
-            nBlockType2 = BlockSpwan(seed);
-            BlockSpwan2(nArr, &nBlockType, seed);
-
-            nSpawning = 1;
-            nRot = 1;
-            gPiecesUsed++;
-			
-			if(gControl == AUTO)
-            	AutoPlay(nBlockType, nBlockType2, (gMode==MODE_40L));
+            SpawnFromQueue(/*resetHoldFlag=*/1);
         }
-
-        // --- (±¸) ³«ÇÏ ·çÇÁ: ÇÏµåµå¶øÀ» ¾²¹Ç·Î °ÅÀÇ °Çµå¸± °Ô ¾øÀ½ ---
-        //     ±×·¡µµ ³²°ÜµÎµÇ '1' ºí·ÏÀÌ ¾ø´Â °æ¿ì´Â ÀÚ¿¬È÷ skip
+        // --- (??) ?? ??: ??? ??? ??? ??? ---
+        //     ?????? 1??? ????? ??
         if (Curtime - Oldtime > nSpeed) {
             Oldtime = Curtime;
-
-            // ÇöÀç ³«ÇÏ ÁßÀÎ Á¶°¢À» Ã£°í ÇÑ Ä­ ³»¸®±â
+            // í˜„ì¬ ë‚™í•˜ ì¤‘ì¸ ì¡°ê°ì„ ì°¾ê³  í•œ ì¹¸ ë‚´ë¦¬ê¸°
             int picked = 0;
             for (int i = 1; i < 21; i++) {
                 for (int j = 1; j < 11; j++) {
@@ -209,76 +218,78 @@ static void Update() {
                     }
                 }
             }
-
             if (picked == 4) {
-                // Ãæµ¹ °Ë»ç
+                // ì¶©ëŒ ê²€ì‚¬
                 int collide = 0;
                 for (int i = 0; i < 4; i++) {
-                    if (nArr[Block_pos[i].Pos.x + 1][Block_pos[i].Pos.y] == 2) {
+                    if (nArr[Block_pos[i].Pos.x + 1][Block_pos[i].Pos.y] >= 2) {
                         collide = 1; break;
                     }
                 }
                 if (collide) {
                     for (int j = 0; j < 4; j++)
-                        nArr[Block_pos[j].Pos.x][Block_pos[j].Pos.y] = 2;
+                        nArr[Block_pos[j].Pos.x][Block_pos[j].Pos.y] = 2 + nBlockType;
                     nSpawning = 3;
-                    nRot = 1;
+                    nRot = 0;
                 } else {
                     for (int i = 0; i < 4; i++)
                         nArr[Block_pos[i].Pos.x + 1][Block_pos[i].Pos.y] = 1;
                 }
             }
         }
-
-        // --- ¶óÀÎ Å¬¸®¾î ---
+        // --- ë¼ì¸ í´ë¦¬ì–´ ---
         int clearedThisPass = 0;
         for (int i = 1; i < 21; i++) {
             int filled = 0;
             for (int j = 1; j < 11; j++)
-                if (nArr[i][j] == 2) filled++;
-
+                if (nArr[i][j] >= 2) filled++;
             if (filled == 10) {
                 clearedThisPass++;
-				nScore += 100; // ÇÑ ÁÙ´ç 100Á¡
+				nScore += 100; // í•œ ì¤„ë‹¹ 100ì 
+                // ì†ë„ 5%p ì¦ê°€(ë‚™í•˜ ì‹œê°„ ë‹¨ì¶•)
+                nSpeed = (int)(nSpeed * 0.95);
                 for (int r = i; r > 1; r--)
                     for (int c = 1; c < 11; c++)
                         nArr[r][c] = nArr[r-1][c];
                 for (int c = 1; c < 11; c++) nArr[1][c] = 0;
-                i--; // ´ç°ÜÁø ÁÙ Àç°Ë»ç
+                i--; // ë‹¹ê²¨ì§„ ì¤„ ì¬ê²€ì‚¬
             }
         }
-
-        // --- 40L ½ºÇÁ¸°Æ® ---
+        // --- 40L ìŠ¤í”„ë¦°íŠ¸ ---
         if (gMode == MODE_40L && clearedThisPass > 0){
             gLinesCleared += clearedThisPass;
             if (gLinesCleared >= 40){
                 int64_t ms = SprintTimerStopMs();
                 SaveRecord40L(ms, gPiecesUsed);
 				check_clear = 1;
+                PanMap(nArr);
+                ScreenClear();
+                ScreenFlipping();
                 Stage = RESULT;
             }
         }
-
-        // --- °ÔÀÓ¿À¹ö: 3Çà¿¡ °íÁ¤ºí·Ï Á¸Àç ---
+        // --- ê²Œì„ì˜¤ë²„: 3í–‰ì— ê³ ì •ë¸”ë¡ ì¡´ì¬ ---
         for (int i = 1; i < 11; i++) {
-            if (nArr[3][i] == 2) {
+            if (nArr[3][i] >= 2) {
+                check_clear = 0;
+                PanMap(nArr);
+                ScreenClear();
+                ScreenFlipping();
                 Stage = RESULT;
                 break;
             }
         }
         break;
     }
-
     case RESULT:
         break;
     }
 }
-
-// ===== ·»´õ =====
+// ===== ë Œë” =====
 static void Render() {
     clock_t Curtime = clock();
     ScreenClear();
-
+    SetColor(COLOR_DEFAULT);
     switch (Stage) {
     case READY:
         MapReady1();
@@ -286,65 +297,65 @@ static void Render() {
         ScreenPrint(26, 2, "Press '1' = NORMAL");
         ScreenPrint(26, 3, "Press '2' = 40-LINE Sprint");
         ScreenPrint(26, 4, "Press '3' = Auto-Tune 40L");
-		ScreenPrint(26, 5, "Press '4' = Train NN (C)");
         break;
-
     case RUNNING: {
-        // º¸µå
+        // ë³´ë“œ
+        SetColor(COLOR_DEFAULT);
         for (int i = 4; i < 22; i++) {
             for (int j = 0; j < 12; j++) {
-                if (nArr[i][j] == 2) {
-                    ScreenPrint(j * 2, i - 3, "¢Ì");
-                } else if (nArr[i][j] == 1) {
-                    ScreenPrint(j * 2, i - 3, "¡á");
+                int v = nArr[i][j];
+                if (v >= 2) {
+                    int t = v - 2;
+                    if (t < 0 || t > 6) t = 0;
+                    SetColor(ColorForType(t));
+                    ScreenPrint(j * 2, i - 3, "[]");
+                } else if (v == 1) {
+                    SetColor(ColorForType(nBlockType));
+                    ScreenPrint(j * 2, i - 3, "[]");
                 } else {
+                    SetColor(COLOR_DEFAULT);
                     ScreenPrint(j * 2, i - 3, "  ");
                 }
             }
         }
-
-        // ´ÙÀ½ ºí·Ï
-        MapNext(&nBlockType2);
-
-        // ¿ìÃø ÆĞ³Î
+        SetColor(COLOR_DEFAULT);
+        // hold & next previews
+        MapHold(nHoldType);
+        MapNext(nNextQueue, NEXT_PREVIEW_COUNT);
+        // ìš°ì¸¡ íŒ¨ë„
         if (gMode == MODE_40L){
             LARGE_INTEGER now; QueryPerformanceCounter(&now);
             long long ms = (now.QuadPart - gT0.QuadPart) * 1000LL / gFreq.QuadPart;
             char buf[64];
-            ScreenPrint(26, 7, "== 40L SPRINT ==");
-            snprintf(buf, sizeof(buf), "Lines: %d / 40", gLinesCleared); ScreenPrint(26, 4, buf);
-            snprintf(buf, sizeof(buf), "Pieces: %d", gPiecesUsed);       ScreenPrint(26, 5, buf);
+            const int infoX = 60;
+            ScreenPrint(infoX, 13, "== 40L SPRINT ==");
+            snprintf(buf, sizeof(buf), "Lines: %d / 40", gLinesCleared); ScreenPrint(infoX, 10, buf);
+            snprintf(buf, sizeof(buf), "Pieces: %d", gPiecesUsed);       ScreenPrint(infoX, 11, buf);
             snprintf(buf, sizeof(buf), "Time: %" PRId64 " ms", (int64_t)ms);
-            ScreenPrint(26, 6, buf);
+            ScreenPrint(infoX, 12, buf);
         } else {
             MapScore(&nScore);
         }
         break;
     }
-
     case RESULT:
         MapResult(&nScore, &check_clear);
         ScreenPrint(26, 2, "Press 'R' = RESTART");
         break;
     }
-
-    Map();
+    if (Stage != RESULT) Map();
     ScreenFlipping();
 }
-
-// ===== ¸ŞÀÎ =====
 int main(void) {
+    SetConsoleOutputCP(65001);
+    SetConsoleCP(65001);
     seed = (int)time(NULL);
 	srand(seed);
-
     ScreenInit();
-    init();  // ¡Ú ÇÑ ¹ø¸¸ ÃÊ±âÈ­
-
+    init();
     while (1) {
-		if (_kbhit()) {
+        if (_kbhit()) {
             int nKey = _getch();
-
-            // ----- READY »óÅÂ¿¡¼­ ¸ğµå ¼±ÅÃ -----
             if (Stage == READY){
                 if (nKey == '1'){
                     gMode = MODE_NORMAL;
@@ -360,107 +371,78 @@ int main(void) {
                     Stage = RUNNING;
                 }
                 else if (nKey == '3'){
-					// ½ÃÀÛ ¾È³» 1È¸
-					ScreenClear();
-					ScreenPrint(5, 4, "[Auto-Tune] Starting...");
-					ScreenFlipping();
-
-					// Äİ¹éÀ¸·Î ÁøÇà »óÈ² ½Ç½Ã°£ ·»´õ
-					RunAutoTune40LEx(/*trials=*/5, /*iters=*/300, "weights_40L.csv", TuneProgressUI);
-
-					// ¿Ï·á ÈÄ »õ °¡ÁßÄ¡ ·Îµå ¹× ¾È³»
-					WeightsLoad("weights_40L.csv");
-					init();
-					ScreenClear();
-					ScreenPrint(5, 4, "[Auto-Tune] Done! New weights loaded.");
-					ScreenPrint(5, 6, "Press any key to continue...");
-					ScreenFlipping();
-					_getch();
-					Stage = READY;
-                }
-				else if (nKey == '4'){
-					ScreenClear();
-					ScreenPrint(5,4,"[NN Training] Loading data and starting...");
-					ScreenFlipping();
-				
-					// ¿¹½Ã ÇÏÀÌÆÛÆÄ¶ó¹ÌÅÍ: hidden=128, epochs=40, lr=1e-3, batch=512, val_split=0.1
-					int ok = NN_TrainFromBin("train.bin", "nn_weights.bin",
-											 /*hidden=*/128, /*epochs=*/40, /*lr=*/1e-3f,
-											 /*batch=*/512, /*val_split=*/0.10f,
-											 NNTrainProgressUI);
-				
-					// ÇĞ½À ¿Ï·á ÈÄ °¡ÁßÄ¡ ÀçÀû¿ë
-					if(ok) NN_Load("nn_weights.bin");
-				
-					ScreenClear();
-					ScreenPrint(5,4, ok ? "[NN Training] Done! weights reloaded." : "[NN Training] Failed.");
-					ScreenPrint(5,6,"Press any key to continue...");
-					ScreenFlipping();
-					_getch();
-					Stage = READY;
-				}
-                else if (nKey == 13){ // Enter
-                    PlaySound(TEXT("tetris.wav"), NULL, SND_ASYNC | SND_LOOP);
-                    Stage = RUNNING;
-                }
-            }
-
-            // ----- RESULT »óÅÂ¿¡¼­ Àç½ÃÀÛ -----
-            else if (Stage == RESULT){
-                if (nKey == 'R' || nKey == 'r'){
-                    init();           // ¡Ú ÀüÃ¼ ÃÊ±âÈ­·Î ÃæºĞ
+                    ScreenClear();
+                    ScreenPrint(5, 4, "[Auto-Tune] Starting...");
+                    ScreenFlipping();
+                    RunAutoTune40LEx(/*trials=*/5, /*iters=*/300, "weights_40L.csv", TuneProgressUI);
+                    WeightsLoad("weights_40L.csv");
+                    init();
+                    ScreenClear();
+                    ScreenPrint(5, 4, "[Auto-Tune] Done! New weights loaded.");
+                    ScreenPrint(5, 6, "Press any key to continue...");
+                    ScreenFlipping();
+                    _getch();
                     Stage = READY;
                 }
             }
-
-            // ----- RUNNING »óÅÂ¿¡¼­ ¼öµ¿ Á¶ÀÛ -----
+            else if (Stage == RESULT){
+                if (nKey == 'R' || nKey == 'r'){
+                    init();
+                    Stage = READY;
+                }
+            }
             else if (Stage == RUNNING){
-				if (nKey == 'A' || nKey == 'a'){
-					gControl = AUTO;
-					AutoPlay(nBlockType, nBlockType2, (gMode==MODE_40L));
-				}
-					
-                if (nKey == 224) {           // Arrow prefix
+                if (nKey == 'A' || nKey == 'a'){
+                    if (gControl == AUTO){
+                        gControl = MANUAL; // toggle off
+                    } else {
+                        gControl = AUTO;   // toggle on
+                        AutoPlay(nBlockType, nBlockType2, (gMode==MODE_40L));
+                    }
+                }
+                else if (nKey == 'C' || nKey == 'c'){
+                    HoldCurrentPiece();
+                }
+                if (nKey == 224) {
                     nKey = _getch();
-                    int k = 1;
                     switch (nKey) {
                     case LEFT:
                         Beep(200, 200);
-                        for (int i = 0; i < 4; i++) {
-                            if (nArr[Block_pos[i].Pos.x][Block_pos[i].Pos.y-1] == 2) { k = 0; break; }
-                        }
-                        if (k) LeftMove(nArr);
+                        LeftMove(nArr);
                         break;
-
                     case RIGHT:
                         Beep(200, 200);
-                        for (int i = 0; i < 4; i++) {
-                            if (nArr[Block_pos[i].Pos.x][Block_pos[i].Pos.y+1] == 2) { k = 0; break; }
-                        }
-                        if (k) RightMove(nArr);
+                        RightMove(nArr);
                         break;
-
                     case UP:
                         Beep(200, 200);
-                        Rotate(nArr, nBlockType, Block_pos, nRot);
-                        if (nRot == 3) nRot = -1;
-                        nRot++;
+                        {
+                            int nextRot = (nRot + 1) & 3;
+                            if (Rotate(nArr, nBlockType, nextRot)) nRot = nextRot;
+                        }
                         break;
-
                     case DOWN:
-                        DownMove(nArr);
-                        nSpawning = 3;
-                        nRot = 1;
+                    {
+                        int locked = SoftDropOne(nArr, nBlockType);
+                        if (locked){
+                            nSpawning = 3;
+                            nRot = 0;
+                        }
+                    }
                         break;
                     }
                 }
+                else if (nKey == ' '){
+                    Beep(300, 50);
+                    HardDrop(nArr, nBlockType);
+                    nSpawning = 3;
+                    nRot = 0;
+                }
             }
         }
-
-        Update();  // µ¥ÀÌÅÍ °»½Å
-        Render();  // È­¸é Ãâ·Â
+        Update();
+        Render();
     }
-
     ScreenRelease();
     return 0;
 }

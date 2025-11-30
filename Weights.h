@@ -8,6 +8,11 @@ typedef struct {
     int W_agg_height;   // 전체 높이 합
     int W_holes;        // 구멍 수
     int W_bump;         // 인접 열 높이 차의 합
+    int W_wells;        // �� ����
+    int W_row_trans;    // �� ����
+    int W_col_trans;    // �� ����
+    int W_hole_depth;   // ���� ����
+    int W_blockades;    // ���� �� ����
 } Weights;
 
 extern Weights gW;

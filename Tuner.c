@@ -38,7 +38,7 @@ static void hole_and_maxH(const int F[H][W], int* holes, int* maxh){
     for(int j=PLAY_LEFT;j<=PLAY_RIGHT;j++){
         int seen=0;
         for(int i=PLAY_TOP;i<=PLAY_BOTTOM;i++){
-            if(F[i][j]==2){
+            if(F[i][j]>=2){
                 if(!mh) mh=(PLAY_BOTTOM+1)-i;
                 seen=1;
             } else if(seen && F[i][j]==0){
@@ -120,6 +120,11 @@ static void Clamp(Weights* w){
     CLAMP(W_agg_height, 0, 2000);
     CLAMP(W_holes,      0, 5000);
     CLAMP(W_bump,       0, 2000);
+    CLAMP(W_wells,      0, 2000);
+    CLAMP(W_row_trans,  0, 5000);
+    CLAMP(W_col_trans,  0, 5000);
+    CLAMP(W_hole_depth, 0, 2000);
+    CLAMP(W_blockades,  0, 5000);
     #undef CLAMP
 }
 static Weights Perturb(const Weights* base, int span){
@@ -134,6 +139,11 @@ static Weights Perturb(const Weights* base, int span){
     JITTER(W_agg_height, span/2);
     JITTER(W_holes,      span);
     JITTER(W_bump,       span/2);
+    JITTER(W_wells,      span/2);
+    JITTER(W_row_trans,  span/2);
+    JITTER(W_col_trans,  span/2);
+    JITTER(W_hole_depth, span/3);
+    JITTER(W_blockades,  span);
     #undef JITTER
     Clamp(&w);
     return w;
@@ -145,6 +155,8 @@ void RunAutoTune40LEx(int trials, int iters, const char* out_path, TuneProgressF
     // 전역 백업
     int nArr_bak[H][W]; memcpy(nArr_bak, nArr, sizeof(nArr_bak));
     int bt_bak=nBlockType, bt2_bak=nBlockType2, rot_bak=nRot, sp_bak=nSpawning;
+    int next_bak[NEXT_PREVIEW_COUNT]; memcpy(next_bak, nNextQueue, sizeof(next_bak));
+    int hold_bak=nHoldType, hold_used_bak=holdUsedThisTurn;
     int lines_bak=gLinesCleared, pcs_bak=gPiecesUsed, score_bak=nScore;
     STAGE st_bak=Stage; clock_t old_bak=Oldtime;
 
@@ -213,6 +225,8 @@ void RunAutoTune40LEx(int trials, int iters, const char* out_path, TuneProgressF
     // 전역 복원
     memcpy(nArr, nArr_bak, sizeof(nArr_bak));
     nBlockType=bt_bak; nBlockType2=bt2_bak; nRot=rot_bak; nSpawning=sp_bak;
+    memcpy(nNextQueue, next_bak, sizeof(next_bak));
+    nHoldType=hold_bak; holdUsedThisTurn=hold_used_bak;
     gLinesCleared=lines_bak; gPiecesUsed=pcs_bak; nScore=score_bak; Stage=st_bak; Oldtime=old_bak;
 }
 

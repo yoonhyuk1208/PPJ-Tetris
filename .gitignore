@@ -1,2 +1,6 @@
 *.o
+*.exe
+*.txt
+*.csv
+*.bin
 tests

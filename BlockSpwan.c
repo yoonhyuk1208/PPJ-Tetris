@@ -13,10 +13,8 @@ int BlockSpwan(int seed) {
 
 
 // ������ ���� �� ������ ����ϱ�
-void BlockSpwan2(int(*arr)[12], int* nType, int seed) {
-	*nType = BlockSpwan(seed);
-
-	switch (*nType) {
+void BlockSpwan2(int(*arr)[12], int nType) {
+	switch (nType) {
 	case  0:
 		for (int i = 0; i < 4; i++) {
 			for (int j = 0; j < 4; j++) {

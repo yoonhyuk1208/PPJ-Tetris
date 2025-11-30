@@ -1,17 +1,19 @@
 #pragma once
-#include <time.h>   // clock_t 정의
+#include <time.h> 
 
-// 게임 단계
 typedef enum _STAGE { READY, RUNNING, RESULT } STAGE;
 
-// ---- 전역 변수들: 여기서는 "선언"만 (extern) ----
+#define NEXT_PREVIEW_COUNT 4
+
 extern int      nScore;
 extern STAGE    Stage;
 extern clock_t  Oldtime;
 
-// (다른 모듈들이 필요로 하는 전역들도 함께 선언)
 extern int      gLinesCleared;
 extern int      gPiecesUsed;
+extern int      nHoldType;
+extern int      nNextQueue[NEXT_PREVIEW_COUNT];
+extern int      holdUsedThisTurn;
 extern int      nRot;
 extern int      nSpawning;
 extern int      nBlockType;
